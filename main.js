@@ -90,7 +90,7 @@ let mainTimeline = gsap.timeline({scrollTrigger: {trigger: '.section-body', star
 function initGsap() {
     gsapBackgroundParallax();
 
-    const circlePath = createCirclePath(vars.circleRadius);
+    const offsetPerCube = 1/cubes.length;
 
     cubes.forEach((cube, index) => {
         mainTimeline.to(cube.position, {x: vars.funnelToPosition.x, duration: 0.3, ease: "circ.out"}, "funnel-effect");
@@ -98,32 +98,31 @@ function initGsap() {
         mainTimeline.to(cube.scale, {x: vars.funnelToScale, y: vars.funnelToScale, z: vars.funnelToScale, duration: 0.3}, "funnel-effect");
 
 
-        mainTimeline.to(cube.position, {
-            duration: 1,
-            motionPath: {
-                path: circlePath,
-                start: index / cubes.length,
-                end: index / cubes.length + 1
-            },
-            ease: "none"
+        let cubeCircleTimeline = gsap.timeline({paused: true,});
+
+        cubeCircleTimeline.to(cube.position, {
+            x: vars.circleRadius, 
+            ease: CustomEase.create("custom", "M0,0 C0.5,3 0.5,-3 1,0"),
+        }, "stack");
+
+        cubeCircleTimeline.to(cube.position, {
+            y: vars.circleRadius, 
+            ease: CustomEase.create("custom", "M0,0 C0.25,0 0.25,-1 0.5,-1 0.75,-1 0.75,0 1,0"),
+        }, "stack");
+
+
+        let tempProgress = {tempProgress: 0}
+        mainTimeline.to(tempProgress, {
+            tempProgress: 1,
+            onUpdate: function() {
+                cubeCircleTimeline.progress(this.progress() * offsetPerCube * (index+1));
+            }
         }, "circle");
 
-        mainTimeline.to(cube.scale, {x: vars.circleScale, y: vars.circleScale, z: vars.circleScale, duration: 0.2}, "circle");
+        mainTimeline.to(cube.scale, {x: vars.circleScale, y: vars.circleScale, z: vars.circleScale, ease: "power2.in"}, "circle");
     });
 }
 
-function createCirclePath(radius, segments = 32) {
-  const points = [];
-  for (let i = 0; i <= segments; i++) {
-    const a = (i / segments) * Math.PI * 2;
-    points.push({
-      x: Math.cos(a) * radius,
-      y: Math.sin(a) * radius,
-      z: 0
-    });
-  }
-  return points;
-}
 
 
 function gsapBackgroundParallax() {
@@ -136,7 +135,7 @@ function gsapBackgroundParallax() {
             markers: true,
             scrub: vars.scrubAmount,
         }
-    }).progress(0.9);
+    });
 }
 
 
