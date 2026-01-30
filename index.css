@@ -1,0 +1,14 @@
+body {
+    margin: 0;
+    overflow-x: hidden;
+}
+
+.section-body {
+    height: 500vh;
+}
+
+#threejs {
+    position: sticky;
+    top: 0;
+    left: 0;
+}
