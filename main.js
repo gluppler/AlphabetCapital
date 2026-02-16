@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
+import topLightVertexShader from './home-top-bg-vertex.glsl?raw';
+import topLightFragmentShader from './home-top-bg-fragment.glsl?raw';
+
 import * as vars from './vars.js';
 
 
@@ -31,6 +34,9 @@ function initThree() {
     renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setSize(width, height)
     document.querySelector('#threejs').appendChild(renderer.domElement)
+
+    const light = new THREE.AmbientLight(0xffffff, 1);
+    scene.add(light);
 }
 
 
@@ -83,6 +89,31 @@ function createCube(url) {
             },
         );
     });
+}
+
+
+function initTopBackgroundGradient() {
+    const geometry = new THREE.PlaneGeometry( 60, 23 );
+    const material = new THREE.ShaderMaterial({
+        transparent: true,
+        uniforms: {
+            uTime: { value: 0 },
+            uOpacity: { value: 0.4 },
+            uColor1: { value: new THREE.Color(0x7EBFD3) },
+            uColor2: { value: new THREE.Color(0x276C86) },
+            uColor3: { value: new THREE.Color(0x92C5D7) },
+        },
+
+        vertexShader: topLightVertexShader,
+        fragmentShader: topLightFragmentShader,
+    });
+
+    const plane = new THREE.Mesh(geometry, material);
+    plane.position.z = 1;
+    plane.position.y = 10;
+    scene.add(plane);
+
+    return material;
 }
 
 
@@ -142,6 +173,7 @@ function gsapBackgroundParallax() {
 function animate () {
     requestAnimationFrame(animate)
     mouseLook();
+    bgMaterial.uniforms.uTime.value += 0.05;
     renderer.render(scene, camera)
 }
 
@@ -157,9 +189,11 @@ function mouseLook() {
 }
 
 
+var bgMaterial;
 async function init() {
     initThree()
     initBackgroundParticles(500);
+    bgMaterial = initTopBackgroundGradient();
     await initCubes()
 
     initGsap();
