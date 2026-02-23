@@ -1,11 +1,25 @@
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 import topLightVertexShader from './home-top-bg-vertex.glsl?raw';
 import topLightFragmentShader from './home-top-bg-fragment.glsl?raw';
 
+import funnelFragmentShader from './funnel-fragment.glsl?raw';
+
+import Stats from 'three/addons/libs/stats.module.js';
+
 import * as vars from './vars.js';
+
 
 
 gsap.registerPlugin(ScrollTrigger, CustomWiggle, CustomEase, MotionPathPlugin);
@@ -16,14 +30,19 @@ dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5
 const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);
 
+const stats = new Stats();
+document.body.appendChild(stats.dom);
 
+
+
+const width = window.innerWidth, height = window.innerHeight
 
 var scene;
 var camera;
 var renderer;
+var composer;
 
 function initThree() {
-    const width = window.innerWidth, height = window.innerHeight
     scene = new THREE.Scene()
     scene.background = new THREE.Color(0x042730);
 
@@ -33,14 +52,43 @@ function initThree() {
 
     renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setSize(width, height)
+    renderer.toneMapping = THREE.NoToneMapping;
     document.querySelector('#threejs').appendChild(renderer.domElement)
 
-    const light = new THREE.AmbientLight(0xffffff, 1);
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(30, 0, 0);
+    light.target.position.set(-13, 21, -14);
     scene.add(light);
+    scene.add(light.target);
+
+    initBloom();
+}
+
+function initBloom() {
+    composer = new EffectComposer(renderer);
+
+    const fxaaPass = new ShaderPass(FXAAShader);
+    fxaaPass.uniforms['resolution'].value.set(1 / width, 1 / height);
+
+    const bloomStrength = 0.2;
+    const bloomRadius = 2;
+    const bloomThreshold = 1;
+
+    const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        bloomStrength,
+        bloomRadius,
+        bloomThreshold
+    )
+
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(bloomPass);
+    composer.addPass(fxaaPass);
+    composer.addPass(new OutputPass());
 }
 
 
-
+const particleScene = new THREE.Scene();
 function initBackgroundParticles(count=700) {
     const positions = new Float32Array(count * 3)
     for (let i = 0; i < count; i++) {
@@ -52,9 +100,17 @@ function initBackgroundParticles(count=700) {
 
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    const material = new THREE.PointsMaterial({ color: 0xffffff, size: 0.025, sizeAttenuation: true })
+
+    const material = new THREE.PointsMaterial({ 
+        color: 0xffffff, 
+        size: 0.025,
+        sizeAttenuation: true,
+        depthTest: false,
+        depthWrite: false,
+    })
+
     const points = new THREE.Points(geometry, material)
-    scene.add(points)
+    particleScene.add(points);
 }
 
 var cubes = []
@@ -64,6 +120,13 @@ async function initCubes() {
     for (const cubePosition of vars.initialCubePositions) {
         const cube = await createCube(vars.pathToCube);
         cube.position.set(cubePosition[0], cubePosition[1], cubePosition[2]);
+
+        cube.traverse((child) => {
+            if (child.isMesh) {
+                child.material.emissive = new THREE.Color(0xe7e7e7);
+                child.material.emissiveIntensity = 1.1;
+            }
+        });
 
         gsap.to(cube.rotation, {
             y: "+=0.3",
@@ -93,15 +156,16 @@ function createCube(url) {
 
 
 function initTopBackgroundGradient() {
-    const geometry = new THREE.PlaneGeometry( 60, 23 );
+    const geometry = new THREE.PlaneGeometry( 60, 25 );
     const material = new THREE.ShaderMaterial({
         transparent: true,
+        depthTest: false,
+        depthWrite: false,
         uniforms: {
             uTime: { value: 0 },
             uOpacity: { value: 0.4 },
-            uColor1: { value: new THREE.Color(0x7EBFD3) },
-            uColor2: { value: new THREE.Color(0x276C86) },
-            uColor3: { value: new THREE.Color(0x92C5D7) },
+            uColor1: { value: new THREE.Color(0x8ae3ff) },
+            uColor2: { value: new THREE.Color(0x005771) },
         },
 
         vertexShader: topLightVertexShader,
@@ -117,6 +181,55 @@ function initTopBackgroundGradient() {
 }
 
 
+function initFunnelTunnel() {
+    const planeHeight = 15;
+
+    const geometry = new THREE.PlaneGeometry( 12, planeHeight, 200, 30 );
+    const positions = geometry.attributes.position;
+
+    function returnNormalizedMagnitude(currentHeight) {
+        const normalized = currentHeight/planeHeight + 0.5
+        const easedNormalized = Math.pow(normalized, 5); 
+        return easedNormalized;
+    }
+
+    for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i);
+        const y = positions.getY(i);
+
+        const curveMagnitude = returnNormalizedMagnitude(y)
+        positions.setX(i, x * Math.max(curveMagnitude, 0.002));
+    }
+
+    positions.needsUpdate = true;
+
+    const material = new THREE.ShaderMaterial({
+        transparent: true,
+
+        uniforms: {
+            uTime: { value: 0 },
+            uOpacity: { value: 0.9 },
+            uColor1: { value: new THREE.Color(0x00c3ff) },
+            uColor2: { value: new THREE.Color(0x7ce0ff) },
+        },
+
+        vertexShader: topLightVertexShader,
+        fragmentShader: funnelFragmentShader,
+    });
+
+    const plane = new THREE.Mesh(geometry, material);
+    plane.position.z = 15;
+    plane.position.y = 0.5;
+    scene.add(plane);
+
+    return material;
+}
+
+
+function returnFunnelFunction() {
+}
+
+
 let mainTimeline = gsap.timeline({scrollTrigger: {trigger: '.section-body', start: "top top", end: "99% bottom", scrub: vars.scrubAmount, markers: true}});
 function initGsap() {
     gsapBackgroundParallax();
@@ -124,8 +237,8 @@ function initGsap() {
     const offsetPerCube = 1/cubes.length;
 
     cubes.forEach((cube, index) => {
-        mainTimeline.to(cube.position, {x: vars.funnelToPosition.x, duration: 0.3, ease: "circ.out"}, "funnel-effect");
-        mainTimeline.to(cube.position, {y: vars.funnelToPosition.y, z: vars.funnelToPosition.z ,duration: 1}, "funnel-effect");
+        mainTimeline.to(cube.position, {x: vars.funnelToPosition.x, duration: 0.7, ease: "circ.out"}, "funnel-effect");
+        mainTimeline.to(cube.position, {y: vars.funnelToPosition.y, z: vars.funnelToPosition.z ,duration: 3, ease: "power2.out"}, "funnel-effect");
         mainTimeline.to(cube.scale, {x: vars.funnelToScale, y: vars.funnelToScale, z: vars.funnelToScale, duration: 0.3}, "funnel-effect");
 
 
@@ -174,7 +287,17 @@ function animate () {
     requestAnimationFrame(animate)
     mouseLook();
     bgMaterial.uniforms.uTime.value += 0.05;
-    renderer.render(scene, camera)
+    funnel.uniforms.uTime.value += 0.05;
+
+    composer.render();
+    // renderer.render(scene, camera)
+
+    // Render particles on top, no post-processing
+    renderer.autoClear = false;
+    renderer.render(particleScene, camera);
+    renderer.autoClear = true;
+
+    stats.update();
 }
 
 const mouse = { x: 0, y: 0 }
@@ -190,10 +313,12 @@ function mouseLook() {
 
 
 var bgMaterial;
+var funnel;
 async function init() {
     initThree()
     initBackgroundParticles(500);
     bgMaterial = initTopBackgroundGradient();
+    funnel = initFunnelTunnel()
     await initCubes()
 
     initGsap();

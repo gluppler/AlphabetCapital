@@ -47,21 +47,34 @@ float perlinNoise(vec2 P) {
 void main() {
     vec2 uv = vUv;
 
-    float n1 = perlinNoise(uv * 1.0 + vec2(0.0, cos(uTime * 0.15)));
-    float n2 = perlinNoise(uv * 2.0 + vec2(0.0, sin(uTime * 0.125)) + 5.0);
+    // Flow direction: top to bottom
+    float flow1 = perlinNoise(vec2(uv.x * 3.0, uv.y * 0.8 - uTime * 0.2));
+    float flow2 = perlinNoise(vec2(uv.x * 5.0 + 2.0, uv.y * 1.2 - uTime * 0.35));
+    float flow3 = perlinNoise(vec2(uv.x * 8.0 + 5.0, uv.y * 1.5 - uTime * 0.5));
 
-    n1 = n1 * 0.5 + 0.5;
-    n2 = n2 * 0.5 + 0.5;
+    flow1 = flow1 * 0.5 + 0.5;
+    flow2 = flow2 * 0.5 + 0.5;
+    flow3 = flow3 * 0.5 + 0.5;
 
-    vec3 color = mix(uColor1, uColor2, n1);
-    color = mix(color, uColor3, n2 * 0.5);
+    // Lateral ripple — slight x wobble like water hitting rocks
+    float ripple = perlinNoise(vec2(uv.x * 6.0 - uTime * 0.1, uv.y * 2.0 - uTime * 0.3)) * 0.03;
+
+    vec3 color = mix(uColor1, uColor2, flow1);
+    color = mix(color, uColor3, flow2 * 0.4);
+    color += flow3 * 0.08;
+    // color += ripple;
 
     vec2 center = vUv - vec2(0.5, 1.0);
     float dist = length(center);
-    float circle = 1.0 - smoothstep(0.3, 1.0, dist);
+    float circle = 1.1 + smoothstep(0.2, 0.3, dist);
+    float edgeFade = smoothstep(0.0, 0.2, vUv.x) 
+        * smoothstep(1.0, 0.85, vUv.x) 
+        * smoothstep(0.0, 0.5, vUv.y) 
+        * smoothstep(1.0, 0.8, vUv.y);
+    float alpha = circle * edgeFade;
 
     vec3 dither = vec3(fract(sin(dot(vUv * 1000.0, vec2(12.9898, 78.233))) * 43758.5453));
     color += (dither - 0.5) / 100.0;
 
-    gl_FragColor = vec4(color, circle * uOpacity);
+    gl_FragColor = vec4(color * 1.05, alpha * uOpacity);
 }
