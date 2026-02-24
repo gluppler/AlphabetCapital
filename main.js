@@ -18,8 +18,9 @@ import funnelFragmentShader from './funnel-fragment.glsl?raw';
 
 import Stats from 'three/addons/libs/stats.module.js';
 
-import * as vars from './vars.js';
+import Lenis from 'lenis'
 
+import * as vars from './vars.js';
 
 
 gsap.registerPlugin(ScrollTrigger, CustomWiggle, CustomEase, MotionPathPlugin);
@@ -32,6 +33,14 @@ gltfLoader.setDRACOLoader(dracoLoader);
 
 const stats = new Stats();
 document.body.appendChild(stats.dom);
+
+
+const lenis = new Lenis()
+lenis.on('scroll', ScrollTrigger.update)
+gsap.ticker.add((time) => {
+    lenis.raf(time * 1000)
+})
+gsap.ticker.lagSmoothing(0)
 
 
 
@@ -128,10 +137,13 @@ async function initCubes() {
             }
         });
 
+        cube.rotation.y = getRndNum(-0.8, 0.8);
+        cube.rotation.x = getRndNum(-0.8, 0.8);
+
         gsap.to(cube.rotation, {
-            y: "+=0.3",
-            x: "+=0.5",
-            duration: 5,
+            y: "+=" + getRndNum(-0.8, 0.8),
+            x: "+=" + getRndNum(-0.8, 0.8),
+            duration: getRndNum(4, 7),
             yoyo: true,
             repeat: -1,
             ease: "power1.inOut",
@@ -152,6 +164,11 @@ function createCube(url) {
             },
         );
     });
+}
+
+
+function getRndNum(min, max) {
+    return (Math.random() * (max - min) ) + min;
 }
 
 
@@ -184,7 +201,7 @@ function initTopBackgroundGradient() {
 function initFunnelTunnel() {
     const planeHeight = 15;
 
-    const geometry = new THREE.PlaneGeometry( 12, planeHeight, 200, 30 );
+    const geometry = new THREE.PlaneGeometry( 16, planeHeight, 200, 30 );
     const positions = geometry.attributes.position;
 
     function returnNormalizedMagnitude(currentHeight) {
