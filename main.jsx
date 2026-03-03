@@ -11,6 +11,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
+import { Raycaster } from 'three/src/core/Raycaster.js';
+
 import topLightVertexShader from './home-top-bg-vertex.glsl?raw';
 import topLightFragmentShader from './home-top-bg-fragment.glsl?raw';
 
@@ -122,20 +124,35 @@ function initBackgroundParticles(count=700) {
     particleScene.add(points);
 }
 
-var cubes = []
+
 
 async function initCubes() {
+    await initInitialCubes();
+    await initCircleCubes();
+}
 
-    for (const cubePosition of vars.initialCubePositions) {
-        const cube = await createCube(vars.pathToCube);
-        cube.position.set(cubePosition[0], cubePosition[1], cubePosition[2]);
 
-        cube.traverse((child) => {
-            if (child.isMesh) {
-                child.material.emissive = new THREE.Color(0xe7e7e7);
-                child.material.emissiveIntensity = 1.1;
-            }
-        });
+const GlowColor = new THREE.Color(0xe7e7e7);
+const GlowIntensity = 1.1;
+function setupCubeMesh(cube, name) {
+    cube.traverse((child) => {
+        if (child.isMesh) {
+            child.material.emissive = GlowColor;
+            child.material.emissiveIntensity = GlowIntensity;
+            child.name = name;
+        }
+    });
+}
+
+
+var initialCubes = []
+async function initInitialCubes() {
+
+    for (const initCube of vars.initialCube) {
+        const cube = await createCube(initCube.pathToCube);
+        cube.position.copy(initCube.position);
+
+        setupCubeMesh(cube, initCube.name);
 
         cube.rotation.y = getRndNum(-0.8, 0.8);
         cube.rotation.x = getRndNum(-0.8, 0.8);
@@ -149,8 +166,24 @@ async function initCubes() {
             ease: "power1.inOut",
         });
 
-        cubes.push(cube);
+        initialCubes.push(cube);
     }
+}
+
+
+var circleCubes = []
+
+async function initCircleCubes() {
+
+    for (const circleCube of vars.circleCubes) {
+        const cube = await createCube(circleCube.pathToCube);
+        cube.position.copy(new THREE.Vector3(... vars.funnelToPositionArr));
+
+        setupCubeMesh(cube, circleCube.name);
+
+        circleCubes.push(cube);
+    }
+
 }
 
 function createCube(url) {
@@ -243,23 +276,69 @@ function initFunnelTunnel() {
 }
 
 
-function returnFunnelFunction() {
-}
+let mainTimeline = gsap.timeline({scrollTrigger: {
+    trigger: '.section-body',
+    start: "top top",
+    end: "99% bottom",
+    scrub: vars.scrubAmount,
+}});
 
-
-let mainTimeline = gsap.timeline({scrollTrigger: {trigger: '.section-body', start: "top top", end: "99% bottom", scrub: vars.scrubAmount, markers: true}});
 function initGsap() {
     gsapBackgroundParallax();
 
-    const offsetPerCube = 1/cubes.length;
 
-    cubes.forEach((cube, index) => {
-        mainTimeline.to(cube.position, {x: vars.funnelToPosition.x, duration: 0.7, ease: "circ.out"}, "funnel-effect");
-        mainTimeline.to(cube.position, {y: vars.funnelToPosition.y, z: vars.funnelToPosition.z ,duration: 3, ease: "power2.out"}, "funnel-effect");
-        mainTimeline.to(cube.scale, {x: vars.funnelToScale, y: vars.funnelToScale, z: vars.funnelToScale, duration: 0.3}, "funnel-effect");
+    const cubeTimeline = gsap.timeline({});
+    initialCubes.forEach((cube, index) => {
+
+        cubeTimeline.to(cube.position, {
+            x: vars.funnelToPosition.x,
+            duration: getRndNum(0.3, 1.3),
+            ease: CustomEase.create("custom", "M0,0 C0,0 0.3,0.531 0.385,0.722 0.497,0.976 0.577,1.136 0.649,1.059 0.747,0.952 1,1 1,1"),
+            delay: getRndNum(0, 0.2),
+        }, 0);
+
+        cubeTimeline.to(cube.position, {
+            y: vars.funnelToPosition.y,
+            z: vars.funnelToPosition.z,
+            duration: 3,
+            ease: "power2.out",
+        }, 0);
+
+        cubeTimeline.to(cube.scale, {
+            x: vars.funnelToScale,
+            y: vars.funnelToScale,
+            z: vars.funnelToScale,
+            duration: 2,
+        }, 0);
+
+        cubeTimeline.to(cube, {
+            visible: false,
+            duration: 0.1,
+            onReverseComplete: () => {
+                cube.position.x = vars.funnelToPosition.x;
+                cube.position.y = vars.funnelToPosition.y;
+            },
+        });
+
+        mainTimeline.add(cubeTimeline, "funnel-effect");
+
+    });
 
 
-        let cubeCircleTimeline = gsap.timeline({paused: true,});
+    const offsetPerCube = 1/circleCubes.length;
+    circleCubes.forEach((cube, index) => {
+
+        mainTimeline.to(cube, {
+            visible: true,
+            duration: 0.1,
+        }, "circle");
+
+
+
+        let cubeCircleTimeline = gsap.timeline();
+        cubeCircleTimeline.pause();
+
+        cube.visible = false;
 
         cubeCircleTimeline.to(cube.position, {
             x: vars.circleRadius, 
@@ -277,10 +356,58 @@ function initGsap() {
             tempProgress: 1,
             onUpdate: function() {
                 cubeCircleTimeline.progress(this.progress() * offsetPerCube * (index+1));
-            }
+            },
+            duration: 1.5,
         }, "circle");
 
-        mainTimeline.to(cube.scale, {x: vars.circleScale, y: vars.circleScale, z: vars.circleScale, ease: "power2.in"}, "circle");
+        mainTimeline.fromTo(
+            cube.scale, 
+            {
+                x: vars.funnelToScale,
+                y: vars.funnelToScale,
+                z: vars.funnelToScale,
+            },
+            {
+                x: vars.circleScale,
+                y: vars.circleScale,
+                z: vars.circleScale,
+                ease: "power2.in",
+                duration: 1.5,
+            },
+
+            "circle"
+        );
+
+
+        mainTimeline.from(cube.rotation, {
+            x: 5,
+            y: 7,
+            z: 5,
+            duration: 1.5,
+        }, "circle");
+
+
+        const idleRotate = gsap.to(cube.rotation, {
+            y: "+=" + getRndNum(-0.5, 0.5),
+            x: "+=" + getRndNum(-0.5, 0.5),
+            duration: getRndNum(4, 7),
+            yoyo: true,
+            repeat: -1,
+            ease: "power1.inOut",
+        });
+        idleRotate.pause();
+
+        let temp = {temp: 0}
+        mainTimeline.to( temp, {
+            onComplete: () => {
+                idleRotate.restart()
+            },
+            onReverseComplete: () => {
+                idleRotate.pause()
+            },
+            duration: 0.01,
+        });
+
     });
 }
 
@@ -293,7 +420,6 @@ function gsapBackgroundParallax() {
             trigger: '.section-body',
             start: "top top",
             end: "99% bottom",
-            markers: true,
             scrub: vars.scrubAmount,
         }
     });
@@ -301,6 +427,7 @@ function gsapBackgroundParallax() {
 
 
 function animate () {
+
     requestAnimationFrame(animate)
     mouseLook();
     bgMaterial.uniforms.uTime.value += 0.05;
@@ -317,7 +444,7 @@ function animate () {
     stats.update();
 }
 
-const mouse = { x: 0, y: 0 }
+const mouse = new THREE.Vector2();
 window.addEventListener('mousemove', (e) => {
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
@@ -326,6 +453,35 @@ window.addEventListener('mousemove', (e) => {
 function mouseLook() {
     camera.rotation.y = THREE.MathUtils.lerp(camera.rotation.y, (-mouse.x * Math.PI) / 70, 0.02)
     camera.rotation.x = THREE.MathUtils.lerp(camera.rotation.x, (mouse.y * Math.PI) / 70, 0.02)
+}
+
+
+window.addEventListener('click', (e) => {
+    checkRaycast()
+})
+
+
+
+const raycaster = new THREE.Raycaster();
+function checkRaycast() {
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersects = raycaster.intersectObjects(circleCubes);
+
+    if (intersects.length > 0) {
+        const hit = intersects[0].object;
+
+        gsap.to(hit.parent.scale, {
+            x: vars.onCircleHoverScale,
+            y: vars.onCircleHoverScale,
+            z: vars.onCircleHoverScale,
+            duration: 0.5,
+            ease: "power2.out"
+        });
+
+        hit.emissiveIntensity = GlowIntensity+0.3;
+    }
+    else {console.log("no Hit")}
 }
 
 
@@ -338,11 +494,13 @@ async function init() {
     funnel = initFunnelTunnel()
     await initCubes()
 
+    window.scrollTo({ top: 0, });
+
     initGsap();
     animate()
 }
 
 
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener("load", () => {
     init();
 });
