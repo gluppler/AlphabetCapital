@@ -25,6 +25,8 @@ import Lenis from 'lenis'
 import * as vars from './vars.js';
 
 
+
+
 gsap.registerPlugin(ScrollTrigger, CustomWiggle, CustomEase, MotionPathPlugin);
 
 const dracoLoader = new DRACOLoader();
@@ -52,28 +54,124 @@ var scene;
 var camera;
 var renderer;
 var composer;
+var preLoader;
+
 
 function initThree() {
-    scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x042730);
+    initCamera();
+    initRenderer();
+}
 
-    camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000)
-    camera.position.z = 20
-    camera.position.y = 10
 
-    renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setSize(width, height)
-    renderer.toneMapping = THREE.NoToneMapping;
-    document.querySelector('#threejs').appendChild(renderer.domElement)
+function initPreLoader() {
+    initPreLoaderScene();
+    initLogo(vars.logoPath);
+}
 
+function initPreLoaderScene() {
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 10);
+    dirLight.position.set(15, 15, 2);
+    dirLight.lookAt(10, 10, 0);
+
+    preLoader = new THREE.Scene()
+    preLoader.add(dirLight);
+    preLoader.add(ambientLight);
+}
+
+
+var logo;
+function initLogo(url) {
+    gltfLoader.load( url, (gltf) => {
+        logo = gltf.scene;
+        logo.position.y = vars.cameraInitialHeight;
+        logo.scale.set(vars.logoInitialScale, vars.logoInitialScale, vars.logoInitialScale);
+        preLoader.add(logo);
+        logoGsap();
+    });
+}
+
+
+function logoGsap() {
+
+    const logoTimeline = gsap.timeline({});
+
+    logoTimeline.from(logo.scale, {
+        x: vars.logoGsapInitialScale,
+        y: vars.logoGsapInitialScale,
+        z: vars.logoGsapInitialScale,
+        duration: 1,
+        ease: "power2.out",
+    }, "scaleDown");
+
+    logoTimeline.from(logo.position, {
+        x: vars.logoGsapInitialX,
+        z: vars.logoGsapInitialZ,
+        duration: 1,
+        ease: "power2.out",
+    }, "scaleDown");
+
+    logoTimeline.from(logo.rotation, {
+        y: Math.PI * 2,
+        duration: 1,
+        delay: 0.2,
+        ease: "power2.inOut",
+    }, "scaleDown");
+
+    logoTimeline.to(logo.position, {
+        x: vars.logoInitialX,
+        duration: 1,
+        delay: 0.1,
+        ease: "power3.inOut",
+
+        onStart: () => {
+            document.querySelector("#logo-text").style.display = "block";
+        },
+        onComplete: () => {
+            initMainThree();
+        }
+
+    }, "slide-left");
+
+    logoTimeline.from("#logo-text", {
+        width: 0,
+        duration: 0.8,
+        delay: 0.2,
+        ease: "power3.inOut",
+    }, "slide-left");
+
+}
+
+
+function initMainScene() {
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(30, 0, 0);
     light.target.position.set(-13, 21, -14);
+
+    scene = new THREE.Scene()
     scene.add(light);
     scene.add(light.target);
 
     initBloom();
 }
+
+
+function initCamera() {
+    camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+    camera.position.z = 20;
+    camera.position.y = vars.cameraInitialHeight;
+}
+
+
+function initRenderer() {
+    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
+    renderer.setClearColor(0x000000, 0);
+    renderer.setSize(width, height)
+    renderer.toneMapping = THREE.NoToneMapping;
+    document.querySelector('#threejs').appendChild(renderer.domElement)
+}
+
 
 function initBloom() {
     composer = new EffectComposer(renderer);
@@ -426,20 +524,27 @@ function gsapBackgroundParallax() {
 }
 
 
-function animate () {
-
-    requestAnimationFrame(animate)
-    mouseLook();
-    bgMaterial.uniforms.uTime.value += 0.05;
-    funnel.uniforms.uTime.value += 0.05;
-
-    composer.render();
-    // renderer.render(scene, camera)
-
-    // Render particles on top, no post-processing
+function renderBackgroundParticles() {
     renderer.autoClear = false;
     renderer.render(particleScene, camera);
     renderer.autoClear = true;
+}
+
+function updateUtime() {
+    bgMaterial.uniforms.uTime.value += 0.05;
+    funnel.uniforms.uTime.value += 0.05;
+}
+
+
+function animate () {
+    requestAnimationFrame(animate)
+
+    mouseLook();
+
+    updateUtime();
+
+    composer.render();
+    renderBackgroundParticles();
 
     stats.update();
 }
@@ -463,6 +568,7 @@ window.addEventListener('click', (e) => {
 
 
 const raycaster = new THREE.Raycaster();
+var hoveredCircleCube;
 function checkRaycast() {
     raycaster.setFromCamera(mouse, camera);
 
@@ -471,34 +577,73 @@ function checkRaycast() {
     if (intersects.length > 0) {
         const hit = intersects[0].object;
 
+        if (hoveredCircleCube && hoveredCircleCube != hit.parent) {
+            gsap.to(hoveredCircleCube.scale, {
+                x: vars.circleScale,
+                y: vars.circleScale,
+                z: vars.circleScale,
+                duration: 0.5,
+                ease: "elastic.out(1, 0.5)",
+            });
+        }
+
+        hoveredCircleCube = hit.parent;
+
         gsap.to(hit.parent.scale, {
             x: vars.onCircleHoverScale,
             y: vars.onCircleHoverScale,
             z: vars.onCircleHoverScale,
             duration: 0.5,
-            ease: "power2.out"
+            ease: "elastic.out(1, 0.5)",
         });
 
         hit.emissiveIntensity = GlowIntensity+0.3;
     }
-    else {console.log("no Hit")}
 }
 
 
 var bgMaterial;
 var funnel;
 async function init() {
-    initThree()
+    initThree();
+    initPreLoader();
+    animatePreLoader();
+}
+
+
+function animatePreLoader() {
+    if (ready) return;
+
+    requestAnimationFrame(animatePreLoader)
+
+    renderer.render( preLoader, camera );
+
+    stats.update();
+}
+
+
+var ready = false;
+async function initMainThree() {
+    initMainScene();
     initBackgroundParticles(500);
     bgMaterial = initTopBackgroundGradient();
     funnel = initFunnelTunnel()
     await initCubes()
 
-    window.scrollTo({ top: 0, });
-
     initGsap();
+
     animate()
+
+    onReady();
 }
+
+
+function onReady() {
+    ready = true;
+    document.body.style.overflowY = 'visible';
+    document.querySelector("#logo-text").style.display = "none";
+}
+
 
 
 window.addEventListener("load", () => {

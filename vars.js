@@ -5,6 +5,21 @@ import { Cube, randomPos } from './Cubes.js';
 
 export const scrubAmount = 1;
 
+export const cameraInitialHeight = 10;
+
+
+
+export const logoInitialX = -8.5;
+
+export const logoGsapInitialX = -7;
+export const logoGsapInitialZ = 60;
+
+export const logoInitialScale = 0.5;
+export const logoGsapInitialScale = 15;
+
+
+export const logoPath = '/img/Logo.glb';
+
 
 // Timeline //
 

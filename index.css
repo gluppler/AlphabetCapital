@@ -1,6 +1,8 @@
 body {
     margin: 0;
     overflow-x: hidden;
+    overflow: hidden;
+    background-color: #042730;
 }
 
 .section-body {
@@ -11,4 +13,16 @@ body {
     position: sticky;
     top: 0;
     left: 0;
+}
+
+#logo-text {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: fit-content;
+    height: 4vw;
+    object-fit: cover;
+    object-position: left;
+    display: none;
 }
