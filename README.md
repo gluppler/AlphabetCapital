@@ -212,6 +212,167 @@ All config values (positions, scales, durations) belong in `vars.js`, imported a
 
 ---
 
+---
+
+## Scene-by-Scene Tuning Guide
+
+Every number that controls how a scene looks or behaves lives in **`vars.js`** — that is always the first place to look. Code-level changes (eases, animation structure, geometry) live in **`main.jsx`** in the function named after the scene. Each section below tells you exactly where to go and what to change.
+
+---
+
+### Camera
+
+The camera is shared across every scene. Changing it affects everything.
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Starting height (how high camera begins before scrolling) | `vars.js` | `cameraInitialHeight` |
+| How far camera travels downward while scrolling | `main.jsx` → `gsapBackgroundParallax()` | change the `y: -10` value |
+| Camera distance from the scene (zoom) | `main.jsx` → `initCamera()` | `camera.position.z = 20` |
+| Field of view (how wide the view is) | `main.jsx` → `initCamera()` | first argument of `PerspectiveCamera(60, ...)` |
+| Mouse look sensitivity | `main.jsx` → `mouseLook()` | divide by `70` — increase to reduce sensitivity, decrease to increase it |
+
+**If circle/stacking cubes are clipping off the top or bottom of the screen:**
+The camera starts at `cameraInitialHeight` and scrolls down to `y=-10` over the full page. During the circle phase the camera may still be high, pushing the top cube off-screen. Reduce `cameraInitialHeight` in `vars.js` (e.g. from `10` to `5`) so the camera starts lower and the view is more centred when the circle scene plays.
+
+---
+
+### Preloader (Logo Animation)
+
+Runs before the main scene. Uses its own separate Three.js scene (`preLoader`) with brighter lighting. Once the slide-left animation completes, `initMainThree()` is called and the main scene starts.
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Which GLB file is the logo | `vars.js` | `logoPath` |
+| Logo size on screen | `vars.js` | `logoInitialScale` |
+| Logo starting position (x offset on entry) | `vars.js` | `logoGsapInitialX` |
+| Logo starting depth (z offset — how far it comes from) | `vars.js` | `logoGsapInitialZ` |
+| How large the logo looks on initial zoom-in | `vars.js` | `logoGsapInitialScale` |
+| Where the logo rests after sliding left | `vars.js` | `logoInitialX` |
+| Preloader light intensity / colour | `main.jsx` → `initPreLoaderScene()` | `AmbientLight` intensity `2` and `DirectionalLight` intensity `10` |
+| Logo spin, scale, slide durations/eases | `main.jsx` → `logoGsap()` | each `logoTimeline.from/to` block |
+
+---
+
+### Background Gradient Shader
+
+A large flat plane (`60 × 25` units) positioned behind everything at `z=1, y=10`. Uses a Perlin-noise fragment shader to create the soft animated light at the top of the scene. Always visible — not scroll-driven.
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Colours | `main.jsx` → `initTopBackgroundGradient()` | `uColor1` (`0x8ae3ff`) and `uColor2` (`0x005771`) |
+| Opacity | `main.jsx` → `initTopBackgroundGradient()` | `uOpacity: { value: 0.4 }` |
+| Size of the plane | `main.jsx` → `initTopBackgroundGradient()` | `PlaneGeometry(60, 25)` |
+| Position | `main.jsx` → `initTopBackgroundGradient()` | `plane.position.z = 1` and `plane.position.y = 10` |
+| Animation speed | `main.jsx` → `updateUtime()` | `bgMaterial.uniforms.uTime.value += 0.05` — increase for faster animation |
+| Shader behaviour | `home-top-bg-fragment.glsl` | edit directly |
+
+---
+
+### Background Particles
+
+A separate Three.js scene (`particleScene`) rendered on top of the composer output without going through the bloom post-processing pass. The particles are white dots scattered in a `30 × 30 × 30` cube around the origin.
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Number of particles | `main.jsx` → `initMainThree()` | `initBackgroundParticles(500)` — change `500` |
+| Particle size | `main.jsx` → `initBackgroundParticles()` | `size: 0.025` |
+| Scatter area | `main.jsx` → `initBackgroundParticles()` | `* 30` on x/y/z — increase to spread wider |
+| Colour | `main.jsx` → `initBackgroundParticles()` | `color: 0xffffff` |
+
+---
+
+### Funnel Tunnel
+
+A `16 × 15` plane deformed at the vertex level so it pinches to a near-zero width at the bottom. Sits close to the camera at `z=15`. Uses its own animated fragment shader. Fades out to opacity 0 when the circle phase begins (animated via `mainTimeline`).
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Width of the funnel mouth | `main.jsx` → `initFunnelTunnel()` | `PlaneGeometry(16, ...)` — first argument |
+| Height / length of the funnel | `main.jsx` → `initFunnelTunnel()` | `planeHeight = 15` and `PlaneGeometry(16, planeHeight, ...)` |
+| How aggressively it pinches | `main.jsx` → `initFunnelTunnel()` | `Math.pow(normalized, 5)` — increase exponent for a sharper pinch |
+| Funnel colours | `main.jsx` → `initFunnelTunnel()` | `uColor1` (`0x00c3ff`) and `uColor2` (`0x7ce0ff`) |
+| Opacity at its brightest | `main.jsx` → `initFunnelTunnel()` | `uOpacity: { value: 0.9 }` |
+| Position in scene | `main.jsx` → `initFunnelTunnel()` | `plane.position.z = 15` and `plane.position.y = 0.5` |
+| Animation speed | `main.jsx` → `updateUtime()` | `funnel.uniforms.uTime.value += 0.05` |
+| Shader behaviour | `funnel-fragment.glsl` | edit directly |
+
+---
+
+### Initial Cubes (Scatter → Funnel)
+
+Ten GLB cubes that spawn at random positions and converge to the funnel center when scrolled. Each gets a random idle wobble on load that runs independently of the scroll timeline.
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Which models are used / how many cubes | `vars.js` | `initialCube` array — add or remove `new Cube(randomPos(), '/img/...')` entries |
+| Spawn area (random position range) | `Cubes.js` → `randomPos()` | the x/y/z ranges inside that function |
+| Where all cubes converge to | `vars.js` | `funnelToPosition` |
+| How small cubes shrink as they funnel | `vars.js` | `funnelToScale` |
+| Idle wobble speed and strength | `main.jsx` → `initInitialCubes()` | `getRndNum(4, 7)` (duration) and `getRndNum(-0.8, 0.8)` (rotation range) |
+| Funnel x-axis ease (the elastic overshoot) | `main.jsx` → `initGsap()` inside `cubeTimeline` | the `CustomEase.create(...)` string |
+| Funnel y/z speed | `main.jsx` → `initGsap()` inside `cubeTimeline` | `duration: 3` on the y/z position tween |
+| Scale-down speed | `main.jsx` → `initGsap()` inside `cubeTimeline` | `duration: 2` on the scale tween |
+
+---
+
+### Circle Formation
+
+Four GLB cubes that start hidden at the funnel center and expand into a cross formation when the circle scroll phase is reached. Each cube follows the same x→radius, y→radius path but is evaluated at a different point in the animation — this stagger is what creates the spread-out cross shape. Cubes are clickable (scale up on click via raycasting).
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Which models are used / how many cubes | `vars.js` | `circleCubes` array |
+| How far cubes spread from center | `vars.js` | `circleRadius` |
+| Size of each cube at rest | `vars.js` | `circleScale` |
+| Size when clicked | `vars.js` | `onCircleHoverScale` |
+| Entry scale speed and ease | `main.jsx` → `initGsap()` circle section | `duration: 1.5` and `ease: "power2.in"` on the scale `fromTo` |
+| Entry rotation tumble | `main.jsx` → `initGsap()` circle section | `mainTimeline.from(cube.rotation, { x: 5, y: 7, z: 5, ... })` |
+| Idle wobble after formation | `main.jsx` → `initGsap()` circle section | `gsap.to(cube.rotation, ...)` with `yoyo: true, repeat: -1` |
+| Shape of the spread path (x axis) | `main.jsx` → `initGsap()` circle section | `CustomEase.create("custom", "M0,0 C0.5,3 0.5,-3 1,0")` on cubeCircleTimeline x |
+| Shape of the spread path (y axis) | `main.jsx` → `initGsap()` circle section | `CustomEase.create("custom", "M0,0 C0.25,0 0.25,-1 ...")` on cubeCircleTimeline y |
+| Click interaction | `main.jsx` → `checkRaycast()` | the `gsap.to(hit.parent.scale, ...)` tween |
+
+**If cubes clip off the top or bottom of the screen:** do not change `circleRadius`. Instead lower `cameraInitialHeight` in `vars.js` (e.g. `10` → `5`) so the camera is less high during this phase.
+
+---
+
+### Stacking Cubes
+
+Six GLB cubes that appear sequentially from below after the circle formation hides. All cubes share identical animation logic — the array index drives both the delay and the final Y position. Initial rotation (`x:5, z:5.5`) is set in `initStackingCubes()` and never animated — cubes simply spawn in their tilted orientation.
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Which models are used / how many cubes | `vars.js` | `stackingCubes` array — add or remove entries |
+| Vertical gap between cubes | `vars.js` | `stackSlabHeight` |
+| Position of the top cube (the anchor) | `vars.js` | `stackCube1Position` |
+| Size of each cube | `vars.js` | `stackCubeScale` |
+| Delay between each cube arriving | `main.jsx` → `gsapStackingCubes()` | `const cascadeDelay = 1` |
+| How far below each cube enters from | `main.jsx` → `gsapStackingCubes()` | `y: finalY - 10` — increase `10` to enter from further below |
+| Entry slide speed and ease | `main.jsx` → `gsapStackingCubes()` | `duration: 1.5, ease: "power3.out"` on the position `fromTo` |
+| Entry scale speed and ease | `main.jsx` → `gsapStackingCubes()` | `duration: 1.2, ease: "back.out(1.2)"` on the scale `fromTo` |
+| Squish amount when a cube lands | `main.jsx` → `gsapStackingCubes()` | `y: vars.stackCubeScale * 0.88` — reduce `0.88` for a stronger squish |
+| Initial tilt of all cubes | `main.jsx` → `initStackingCubes()` | `cube.rotation.x = 5` and `cube.rotation.z = 5.5` |
+| When stacking begins (after circle) | `main.jsx` → `gsapStackingCubes()` | `"stacking-intro", "circle+=2"` — the `+=2` is the delay after the circle phase |
+
+---
+
+### Post-Processing (Bloom + FXAA)
+
+Applied to the main scene via `EffectComposer`. Background particles are rendered after the composer in a separate pass so they are not affected by bloom. The background gradient plane is in the main scene but uses `depthTest: false` and stays below the bloom threshold.
+
+| What to change | Where | Variable / line |
+|---|---|---|
+| Bloom glow intensity | `main.jsx` → `initBloom()` | `const bloomStrength = 0.2` |
+| Bloom spread radius | `main.jsx` → `initBloom()` | `const bloomRadius = 2` |
+| What brightness triggers bloom | `main.jsx` → `initBloom()` | `const bloomThreshold = 1` — only emissive materials exceed this by default |
+| Glow colour on cube surfaces | `main.jsx` → top of cube section | `const GlowColor = new THREE.Color(0xe7e7e7)` |
+| Glow intensity on cube surfaces | `main.jsx` → top of cube section | `const GlowIntensity = 1.1` |
+
+**Note:** any GLB model added without calling `setupCubeMesh()` on it will not glow — the emissive value must exceed the bloom threshold (`1.0`) to trigger the bloom pass.
+
+---
+
 ## Example: Adding `globe.glb` to the Scene
 
 `globe.glb` and `grassy_globe.glb` are in `img/` but unused — ready to drop in. This is a complete working example using the patterns above.

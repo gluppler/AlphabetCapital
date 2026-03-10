@@ -77,8 +77,23 @@ function initThree() {
 
 
 // ─── Scene 1 (First): Preloader ───────────────────────────────────────────────
-
-// Sets up the temporary preloader scene and loads the logo model
+//
+// Uses its own isolated Three.js scene (preLoader) so the main scene loads silently in the background.
+// The logo animates in two phases:
+//   "scaleDown"  — logo scales in, drifts from depth, and spins to face the camera
+//   "slide-left" — logo slides left, logo-text image reveals beside it
+// When "slide-left" completes, initMainThree() fires and the main scene begins.
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Logo model              → vars.logoPath in vars.js
+//   • Logo size on screen     → vars.logoInitialScale in vars.js
+//   • Logo resting x position → vars.logoInitialX in vars.js
+//   • Entry depth offset      → vars.logoGsapInitialZ in vars.js
+//   • Entry x offset          → vars.logoGsapInitialX in vars.js
+//   • Entry zoom-in scale     → vars.logoGsapInitialScale in vars.js
+//   • Animation durations     → duration values inside logoGsap()
+//   • Preloader lighting      → AmbientLight (2) and DirectionalLight (10) in initPreLoaderScene()
+// ─────────────────────────────────────────────────────────────────────────────
 function initPreLoader() {
     initPreLoaderScene();
     initLogo(vars.logoPath);
@@ -167,9 +182,22 @@ function logoGsap() {
 }
 
 
-// ─── Main Scene ───────────────────────────────────────────────────────────────
-
-// Creates the one main scene, adds a directional light, and sets up post-processing
+// ─── Main Scene & Post-Processing ─────────────────────────────────────────────
+//
+// One DirectionalLight illuminates all GLB models in the main scene.
+// Post-processing pipeline: RenderPass → UnrealBloom → FXAA → OutputPass.
+// Only meshes whose emissive value exceeds bloomThreshold (1.0) catch the bloom glow.
+// All cube models are pushed above this threshold automatically by setupCubeMesh().
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Bloom glow intensity    → bloomStrength = 0.2 in initBloom()
+//   • Bloom spread radius     → bloomRadius = 2 in initBloom()
+//   • What brightness blooms  → bloomThreshold = 1 in initBloom()
+//   • Cube glow colour        → GlowColor = 0xe7e7e7 (defined below initBloom)
+//   • Cube glow intensity     → GlowIntensity = 1.1 (defined below initBloom)
+//   • Scene light direction   → light.position.set(...) in initMainScene()
+//   • Scene light target      → light.target.position.set(...) in initMainScene()
+// ─────────────────────────────────────────────────────────────────────────────
 function initMainScene() {
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(30, 0, 0);
@@ -184,8 +212,18 @@ function initMainScene() {
 
 
 // ─── Camera ───────────────────────────────────────────────────────────────────
-
-// FOV 60, positioned at z=20 and y=cameraInitialHeight — shared across all scenes
+//
+// Perspective camera shared by ALL scenes (preloader, main, particles).
+// Starts at z=20, y=cameraInitialHeight and drifts downward over scroll via gsapBackgroundParallax().
+// Mouse look adds a subtle tilt each frame via mouseLook().
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Starting height         → vars.cameraInitialHeight in vars.js
+//   • How far it scrolls down → y: -10 in gsapBackgroundParallax() below
+//   • Zoom / distance         → camera.position.z = 20 in initCamera()
+//   • Field of view           → first arg of PerspectiveCamera(60, ...) in initCamera()
+//   • Mouse look strength     → divide by 70 in mouseLook() — higher number = subtler tilt
+// ─────────────────────────────────────────────────────────────────────────────
 function initCamera() {
     camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     camera.position.z = 20;
@@ -234,8 +272,17 @@ function initBloom() {
 
 
 // ─── Scene 2: Background Particles ────────────────────────────────────────────
-
-// Separate scene so particles are composited without going through the bloom pass
+//
+// White dot particles scattered randomly in a 30×30×30 cube around the origin.
+// Rendered in a SEPARATE scene (particleScene) after the composer so they bypass bloom.
+// Called from initMainThree() as initBackgroundParticles(500).
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Particle count          → change the 500 argument in initMainThree()
+//   • Particle size           → size: 0.025 in initBackgroundParticles()
+//   • Scatter volume          → * 30 on each axis — increase to spread particles further
+//   • Colour                  → color: 0xffffff in initBackgroundParticles()
+// ─────────────────────────────────────────────────────────────────────────────
 const particleScene = new THREE.Scene();
 function initBackgroundParticles(count=700) {
     // Build a flat Float32Array of xyz positions for all particles
@@ -264,9 +311,19 @@ function initBackgroundParticles(count=700) {
 
 
 // ─── Scene 3: Background Gradient ─────────────────────────────────────────────
-
-// Large shader plane positioned behind everything (z=1, y=10)
-// Returns the material so uTime can be updated each frame in updateUtime()
+//
+// A 60×25 shader plane at z=1, y=10 — always sits behind everything else.
+// Uses Perlin noise to animate a soft light bloom at the top of the scene.
+// Returns the material (stored as bgMaterial) so updateUtime() can advance uTime each frame.
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Colours                 → uColor1 (0x8ae3ff) and uColor2 (0x005771) inside this function
+//   • Opacity                 → uOpacity: { value: 0.4 } inside this function
+//   • Animation speed         → bgMaterial.uniforms.uTime.value += 0.05 in updateUtime()
+//   • Plane size              → PlaneGeometry(60, 25) — widen or heighten as needed
+//   • Plane position          → plane.position.z = 1 and plane.position.y = 10
+//   • Shader behaviour        → home-top-bg-fragment.glsl
+// ─────────────────────────────────────────────────────────────────────────────
 function initTopBackgroundGradient() {
     const geometry = new THREE.PlaneGeometry( 60, 25 );
     const material = new THREE.ShaderMaterial({
@@ -294,11 +351,23 @@ function initTopBackgroundGradient() {
 
 
 // ─── Scene 4: Funnel Tunnel ────────────────────────────────────────────────────
-
-// Funnel-shaped plane sitting in front of the scene (z=15, y=0.5)
-// Geometry is deformed by hand — each vertex's x is scaled by a power-5 curve
-// based on its y position, pinching the bottom and widening the top like a funnel mouth
-// Returns the material so uTime can be updated each frame in updateUtime()
+//
+// A 16×15 plane deformed vertex-by-vertex: each vertex's x is scaled by a power-5 curve
+// based on its y position, pinching the bottom to near-zero and flaring the top like a funnel mouth.
+// Sits close to the camera at z=15. Fades out to opacity 0 when the circle phase begins.
+// Returns the material (stored as `funnel`) so updateUtime() can advance uTime each frame.
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Colours                 → uColor1 (0x00c3ff) and uColor2 (0x7ce0ff) inside this function
+//   • Opacity at peak         → uOpacity: { value: 0.9 } inside this function
+//   • Animation speed         → funnel.uniforms.uTime.value += 0.05 in updateUtime()
+//   • Funnel mouth width      → PlaneGeometry(16, ...) first argument
+//   • Funnel height           → planeHeight = 15 AND PlaneGeometry(16, planeHeight, ...)
+//   • Pinch sharpness         → Math.pow(normalized, 5) — raise exponent for a sharper tip
+//   • Depth in scene          → plane.position.z = 15
+//   • Vertical position       → plane.position.y = 0.5
+//   • Shader behaviour        → funnel-fragment.glsl
+// ─────────────────────────────────────────────────────────────────────────────
 function initFunnelTunnel() {
     const planeHeight = 15;
 
@@ -369,7 +438,24 @@ function setupCubeMesh(cube, name) {
     });
 }
 
-// The 10 initial cubes that scatter across the scene and funnel inward on scroll
+// ─── Scene 5a: Initial Cubes (Scatter → Funnel) ───────────────────────────────
+//
+// GLB cubes loaded from vars.initialCube, placed at random positions via randomPos().
+// Each gets a random idle wobble on load that runs forever, independent of scroll.
+// On scroll (funnel-effect label in initGsap) all cubes converge to vars.funnelToPosition,
+// shrink to vars.funnelToScale, then hide.
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Add / remove cubes      → vars.initialCube array in vars.js
+//   • Spawn area              → randomPos() in Cubes.js
+//   • Funnel target position  → vars.funnelToPosition in vars.js
+//   • Shrink-to size          → vars.funnelToScale in vars.js
+//   • Idle wobble strength    → getRndNum(-0.8, 0.8) rotation range in initInitialCubes()
+//   • Idle wobble speed       → getRndNum(4, 7) duration in initInitialCubes()
+//   • Funnel x ease           → CustomEase.create(...) on the x position tween in initGsap()
+//   • Funnel y/z speed        → duration: 3 on the y/z position tween in initGsap()
+//   • Shrink speed            → duration: 2 on the scale tween in initGsap()
+// ─────────────────────────────────────────────────────────────────────────────
 var initialCubes = []
 async function initInitialCubes() {
 
@@ -397,7 +483,26 @@ async function initInitialCubes() {
     }
 }
 
-// The 4 circle cubes — loaded at the funnel center position, hidden until the circle phase
+// ─── Scene 5b: Circle Formation Cubes ────────────────────────────────────────
+//
+// GLB cubes loaded from vars.circleCubes, starting hidden at the funnel center position.
+// On scroll (circle label in initGsap) they spread outward using custom ease paths on x and y.
+// Each cube is frozen at a different point along the same oscillating path (25/50/75/100%),
+// which is what creates the cross formation — they all share one cubeCircleTimeline.
+// The formation is anchored at vars.funnelToPosition (the funnel convergence point).
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Add / remove cubes      → vars.circleCubes array in vars.js
+//   • Spread distance         → vars.circleRadius in vars.js
+//   • Formation anchor        → vars.funnelToPosition in vars.js (also moves funnel endpoint)
+//   • Shift formation up/down → offset the y: vars.circleRadius target in initGsap() circle section
+//   • Cube size at rest       → vars.circleScale in vars.js
+//   • Click-to-select scale   → vars.onCircleHoverScale in vars.js
+//   • Entry tumble rotation   → mainTimeline.from(cube.rotation, ...) in initGsap() circle section
+//   • Spread path shape (x)   → CustomEase string on cubeCircleTimeline x tween in initGsap()
+//   • Spread path shape (y)   → CustomEase string on cubeCircleTimeline y tween in initGsap()
+//   • Idle wobble after entry → gsap.to(cube.rotation, ...) inside circleCubes.forEach in initGsap()
+// ─────────────────────────────────────────────────────────────────────────────
 var circleCubes = []
 async function initCircleCubes() {
 
@@ -412,48 +517,31 @@ async function initCircleCubes() {
 
 }
 
-// The 2 stacking cubes — hidden at load, revealed during the stacking scroll phase
+// ─── Scene 5c: Stacking Cubes (Setup) ────────────────────────────────────────
+//
+// GLB cubes loaded from vars.stackingCubes, all hidden at load (visible = false).
+// Initial rotation (x:5, z:5.5) gives them a tilted slab orientation at rest.
+// Change those rotation values here if you want a different resting angle.
+// The scroll animation is handled entirely by gsapStackingCubes() below.
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Add / remove cubes      → vars.stackingCubes array in vars.js
+//   • Resting tilt            → cube.rotation.x and cube.rotation.z below
+//   • Scroll animation        → gsapStackingCubes() below
+// ─────────────────────────────────────────────────────────────────────────────
 var stackCubes = []
-var stackCube1IdleFloat = null;
-var stackConnected = false;
-var stackSlabHeight = 2; // world-Y extent of one slab, overwritten at load
 
 async function initStackingCubes() {
-    for (let i = 0; i < vars.stackingCubes.length; i++) {
-        const stackCube = vars.stackingCubes[i];
+    for (const stackCube of vars.stackingCubes) {
         const cube = await createCube(stackCube.pathToCube);
         cube.position.copy(new THREE.Vector3(...vars.funnelToPositionArr));
         setupCubeMesh(cube, stackCube.name);
         cube.rotation.x = 5;
         cube.rotation.y = 0;
+        cube.rotation.z = 5.5;
         cube.visible = false;
-        if (i === 0) {
-            // Get LOCAL bounding box (before rotation) to find true slab thickness
-            const savedRx = cube.rotation.x;
-            cube.rotation.set(0, 0, 0);
-            cube.updateWorldMatrix(true, true);
-            const localBox = new THREE.Box3().setFromObject(cube);
-            cube.rotation.set(savedRx, 0, 0);
-            cube.updateWorldMatrix(true, true);
-
-            const localSize = new THREE.Vector3();
-            localBox.getSize(localSize);
-            // local +Z projects onto world Y via -sin(rx)
-            stackSlabHeight = localSize.z * Math.abs(Math.sin(savedRx));
-        }
         stackCubes.push(cube);
     }
-}
-
-function createStackCube1IdleFloat(cube) {
-    stackCube1IdleFloat = gsap.to(cube.position, {
-        y: vars.stackCube1Position.y + vars.stackIdleFloatAmplitude,
-        duration: vars.stackIdleFloatDuration,
-        yoyo: true,
-        repeat: -1,
-        ease: "sine.inOut",
-    });
-    stackCube1IdleFloat.pause();
 }
 
 
@@ -537,6 +625,9 @@ function initGsap() {
 
     });
 
+
+    // Fade funnel out as circle phase begins so it doesn't bleed into circle/stacking scenes
+    mainTimeline.to(funnel.uniforms.uOpacity, { value: 0, duration: 0.5 }, "circle");
 
     // ── Scene 6: Circle Formation ("circle" label) — Currently Last ───────────
     // Circle cubes expand outward from the funnel center into a ring formation
@@ -636,108 +727,73 @@ function initGsap() {
 
 
 // ─── Stacking Phase ────────────────────────────────────────────────────────────
-
-// "stacking-intro"    — cube 1 flies to center and idles with a float animation
-// "stacking-connect"  — cubes 2–6 rise from below sequentially and lock on
-// Scroll-up reversal is fully automatic via GSAP scrub
+//
+// All stacking cubes are driven by a single loop over the stackCubes array.
+//
+// ── To customise the stacking animation ──────────────────────────────────────
+//   • Add / remove cubes     → edit vars.stackingCubes in vars.js
+//   • Change cube spacing    → edit vars.stackSlabHeight in vars.js
+//   • Change entry position  → edit vars.stackCube1Position in vars.js
+//   • Change delay per cube  → edit cascadeDelay below
+//   • Change entry ease      → edit the ease strings in fromTo calls below
+// ─────────────────────────────────────────────────────────────────────────────
 function gsapStackingCubes() {
-    const cube1 = stackCubes[0];
 
-    createStackCube1IdleFloat(cube1);
+    // Seconds between each cube appearing — 1 means one cube arrives per scroll beat
+    const cascadeDelay = 1;
 
     mainTimeline.addLabel("stacking-intro", "circle+=2");
-    mainTimeline.addLabel("stacking-connect", "stacking-intro+=2");
 
-    // ── Hide circle cubes as stacking phase begins ────────────────────────────
+    // Hide circle cubes as the stacking phase begins
     circleCubes.forEach((cube) => {
         mainTimeline.to(cube, { visible: false, duration: 0.1 }, "stacking-intro");
     });
 
-    // ── Cube 1: fly to center and scale in ───────────────────────────────────
-    mainTimeline.to(cube1, { visible: true, duration: 0.01 }, "stacking-intro");
+    // Every stacking cube uses the same logic — index i drives the delay and Y position
+    stackCubes.forEach((cube, i) => {
+        const delay  = i * cascadeDelay;                                   // cube i waits i seconds after stacking-intro
+        const finalY = vars.stackCube1Position.y - i * vars.stackSlabHeight; // cubes stack downward
 
-    mainTimeline.fromTo(cube1.position,
-        { x: vars.funnelToPosition.x, y: vars.funnelToPosition.y, z: vars.funnelToPosition.z },
-        { x: vars.stackCube1Position.x, y: vars.stackCube1Position.y, z: vars.stackCube1Position.z, duration: 1, ease: "power2.out" },
-        "stacking-intro"
-    );
+        // Reveal cube at its scheduled time
+        mainTimeline.to(cube, { visible: true, duration: 0.01 }, `stacking-intro+=${delay}`);
 
-    mainTimeline.fromTo(cube1.scale,
-        { x: vars.funnelToScale, y: vars.funnelToScale, z: vars.funnelToScale },
-        { x: vars.stackCubeScale, y: vars.stackCubeScale, z: vars.stackCubeScale, duration: 1, ease: "back.out(1.5)" },
-        "stacking-intro"
-    );
-
-    mainTimeline.from(cube1.rotation, { x: 4, y: 6, z: 4, duration: 1 }, "stacking-intro");
-
-    // Start idle float once cube 1 is fully in place
-    let introSentinel = { v: 0 };
-    mainTimeline.to(introSentinel, {
-        v: 1,
-        duration: 0.01,
-        onComplete: () => { stackCube1IdleFloat.restart(); },
-        onReverseComplete: () => { stackCube1IdleFloat.pause(); },
-    }, "stacking-intro+=1.05");
-
-    // ── Cubes 2–6: rise from below and connect sequentially ──────────────────
-
-    // Pause idle float when the first connect starts
-    let pauseFloatSentinel = { v: 0 };
-    mainTimeline.to(pauseFloatSentinel, {
-        v: 1,
-        duration: 0.01,
-        onComplete: () => { stackCube1IdleFloat.pause(); },
-        onReverseComplete: () => { stackCube1IdleFloat.restart(); },
-    }, "stacking-connect");
-
-    // Cubes 2–6 cascade: each starts 0.3s after the previous, creating a rapid stacking effect.
-    // This keeps the total timeline extension minimal (~2s added) so earlier scenes are unaffected.
-    const cascadeStep = 0.3;
-    for (let i = 1; i < stackCubes.length; i++) {
-        const cube = stackCubes[i];
-        const prevCube = stackCubes[i - 1];
-        const delay = (i - 1) * cascadeStep;
-        const finalY = vars.stackCube1Position.y - i * stackSlabHeight;
-
-        mainTimeline.to(cube, { visible: true, duration: 0.01 }, `stacking-connect+=${delay}`);
-
+        // Slide in from below to its final Y position
         mainTimeline.fromTo(cube.position,
             { x: vars.stackCube1Position.x, y: finalY - 10, z: vars.stackCube1Position.z },
-            { x: vars.stackCube1Position.x, y: finalY, z: vars.stackCube1Position.z, duration: 1.5, ease: "power3.out" },
-            `stacking-connect+=${delay}`
+            { x: vars.stackCube1Position.x, y: finalY,      z: vars.stackCube1Position.z, duration: 1.5, ease: "power3.out" },
+            `stacking-intro+=${delay}`
         );
 
+        // Scale in from zero to full size
         mainTimeline.fromTo(cube.scale,
             { x: 0, y: 0, z: 0 },
             { x: vars.stackCubeScale, y: vars.stackCubeScale, z: vars.stackCubeScale, duration: 1.2, ease: "back.out(1.2)" },
-            `stacking-connect+=${delay}`
+            `stacking-intro+=${delay}`
         );
 
-        // Squish the cube directly above on landing
-        mainTimeline.to(prevCube.scale, {
-            y: vars.stackCubeScale * 0.88,
-            duration: 0.15,
-            ease: "power2.in",
-            yoyo: true,
-            repeat: 1,
-        }, `stacking-connect+=${delay + 1.2}`);
-    }
-
-    // Fire stackConnected after the last cube lands: last start + 1.5s animation
-    const lastDelay = (stackCubes.length - 2) * cascadeStep + 1.5;
-    let connectSentinel = { v: 0 };
-    mainTimeline.to(connectSentinel, {
-        v: 1,
-        duration: 0.01,
-        onComplete: () => { stackConnected = true; },
-        onReverseComplete: () => { stackConnected = false; },
-    }, `stacking-connect+=${lastDelay}`);
+        // Squish the cube above when this one lands (skip for the very first cube)
+        if (i > 0) {
+            mainTimeline.to(stackCubes[i - 1].scale, {
+                y: vars.stackCubeScale * 0.88,
+                duration: 0.15,
+                ease: "power2.in",
+                yoyo: true,
+                repeat: 1,
+            }, `stacking-intro+=${delay + 1.2}`);
+        }
+    });
 }
 
 
 // ─── Camera Parallax ──────────────────────────────────────────────────────────
-
-// Camera drifts down from y=10 to y=-10 over the full scroll — creates depth parallax
+//
+// Camera y drifts from cameraInitialHeight (10) down to -10 over the full scroll length.
+// This is a separate ScrollTrigger from mainTimeline so it runs independently.
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Starting height         → vars.cameraInitialHeight in vars.js
+//   • Ending height           → y: -10 below — change to control how far down camera travels
+// ─────────────────────────────────────────────────────────────────────────────
 function gsapBackgroundParallax() {
     gsap.to(camera.position, {
         y: -10,
@@ -790,25 +846,42 @@ function animate () {
 }
 
 
-// ─── Mouse Tracking ───────────────────────────────────────────────────────────
-
-// Tracks mouse in normalised device coordinates (-1 to +1) used by both mouseLook and raycasting
+// ─── Mouse Tracking & Look ────────────────────────────────────────────────────
+//
+// Mouse position is tracked in normalised device coordinates (-1 to +1) and used by
+// both mouseLook() (camera tilt) and checkRaycast() (click detection).
+// mouseLook lerps camera rotation toward the mouse each frame for a subtle parallax feel.
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Look strength           → divide by 70 below — lower number = more dramatic tilt
+//   • Lerp smoothness         → 0.02 — lower = slower/smoother tracking, higher = snappier
+// ─────────────────────────────────────────────────────────────────────────────
 const mouse = new THREE.Vector2();
 window.addEventListener('mousemove', (e) => {
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
 })
 
-// Lerps camera rotation toward mouse — subtle parallax look-around effect
-// Divided by 70 keeps the rotation small so it feels like a gentle tilt, not full mouse-look
 function mouseLook() {
     camera.rotation.y = THREE.MathUtils.lerp(camera.rotation.y, (-mouse.x * Math.PI) / 70, 0.02)
     camera.rotation.x = THREE.MathUtils.lerp(camera.rotation.x, (mouse.y * Math.PI) / 70, 0.02)
 }
 
 
-// ─── Raycasting / Click Interaction ──────────────────────────────────────────
-
+// ─── Click Interaction ────────────────────────────────────────────────────────
+//
+// Raycasting only targets circleCubes. On click:
+//   1. The previously selected cube resets to circleScale
+//   2. The newly hit cube scales up to onCircleHoverScale with an elastic bounce
+//   3. The hit mesh's emissiveIntensity brightens slightly for a selection highlight
+//
+// ── To customise ─────────────────────────────────────────────────────────────
+//   • Click scale             → vars.onCircleHoverScale in vars.js
+//   • Reset scale             → vars.circleScale in vars.js
+//   • Click animation ease    → elastic.out(1, 0.5) in checkRaycast() below
+//   • Glow on click           → GlowIntensity + 0.3 in checkRaycast() below
+//   • Which objects clickable  → circleCubes in raycaster.intersectObjects() below
+// ─────────────────────────────────────────────────────────────────────────────
 window.addEventListener('click', (e) => {
     checkRaycast()
 })

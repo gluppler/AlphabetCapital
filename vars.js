@@ -43,7 +43,7 @@ export const funnelToScale = 0.1;
 
 
 
-// Circl Cubes //
+// Circle Cubes //
 export const circleCubes = [
     new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/4PL Innovation Partner.glb', "circle cube"),
     new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/AI & Cloud Synergy.glb', "circle cube"),
@@ -68,5 +68,4 @@ export const stackingCubes = [
 
 export const stackCube1Position = { x: 0, y: -10, z: 0 };
 export const stackCubeScale = 1;
-export const stackIdleFloatAmplitude = 0.15;
-export const stackIdleFloatDuration = 2.5;
+export const stackSlabHeight = 0.7; // vertical gap between stacked cubes — increase to spread apart, decrease to bring closer
