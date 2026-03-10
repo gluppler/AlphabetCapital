@@ -66,6 +66,6 @@ export const stackingCubes = [
     new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/Intelligence-First Design.glb', "stack-cube-6"),
 ]
 
-export const stackCube1Position = { x: 0, y: -10, z: 0 };
+export const stackCube1Position = { x: 0, y: -8, z: 0 }; // landing position of the first (top) stacking cube; remaining cubes stack downward from here
 export const stackCubeScale = 1;
 export const stackSlabHeight = 0.7; // vertical gap between stacked cubes — increase to spread apart, decrease to bring closer

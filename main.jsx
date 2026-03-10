@@ -520,21 +520,31 @@ async function initCircleCubes() {
 // ─── Scene 5c: Stacking Cubes (Setup) ────────────────────────────────────────
 //
 // GLB cubes loaded from vars.stackingCubes, all hidden at load (visible = false).
+// Each cube is placed at its FINAL stacked position (stackCube1Position - i*stackSlabHeight)
+// rather than at the funnel origin. This means the scroll reveal is driven entirely by
+// a fromTo position tween in gsapStackingCubes() — no spawning-from-origin visual artifact.
 // Initial rotation (x:5, z:5.5) gives them a tilted slab orientation at rest.
-// Change those rotation values here if you want a different resting angle.
-// The scroll animation is handled entirely by gsapStackingCubes() below.
 //
 // ── To customise ─────────────────────────────────────────────────────────────
 //   • Add / remove cubes      → vars.stackingCubes array in vars.js
+//   • Stack vertical spacing  → vars.stackSlabHeight in vars.js
+//   • Stack anchor position   → vars.stackCube1Position in vars.js
 //   • Resting tilt            → cube.rotation.x and cube.rotation.z below
 //   • Scroll animation        → gsapStackingCubes() below
 // ─────────────────────────────────────────────────────────────────────────────
 var stackCubes = []
 
 async function initStackingCubes() {
-    for (const stackCube of vars.stackingCubes) {
+    for (let i = 0; i < vars.stackingCubes.length; i++) {
+        const stackCube = vars.stackingCubes[i];
         const cube = await createCube(stackCube.pathToCube);
-        cube.position.copy(new THREE.Vector3(...vars.funnelToPositionArr));
+
+        // Place each cube at its final stacked position from the start so the
+        // scroll reveal is pure camera movement — no spawning from origin
+        const finalY = vars.stackCube1Position.y - i * vars.stackSlabHeight;
+        cube.position.set(vars.stackCube1Position.x, finalY, vars.stackCube1Position.z);
+        cube.scale.set(vars.stackCubeScale, vars.stackCubeScale, vars.stackCubeScale);
+
         setupCubeMesh(cube, stackCube.name);
         cube.rotation.x = 5;
         cube.rotation.y = 0;
@@ -722,6 +732,19 @@ function initGsap() {
 
     });
 
+    // Scroll circle cubes up and off the top of the screen before stacking begins.
+    // The camera only descends to y=-10 so the formation never clears the top naturally —
+    // this tween drives them upward 35 units over 2 scroll units, clearing the viewport.
+    // 35 units chosen because cube 1 (highest, y≈-4) needs to reach y≈+31 to clear
+    // the top of the viewport (~y=12.76 at the camera's lowest point).
+    circleCubes.forEach((cube) => {
+        mainTimeline.to(cube.position, {
+            y: "+=35",
+            duration: 2,
+            ease: "none",
+        }, "circle+=1.5");
+    });
+
     gsapStackingCubes();
 }
 
@@ -734,53 +757,36 @@ function initGsap() {
 //   • Add / remove cubes     → edit vars.stackingCubes in vars.js
 //   • Change cube spacing    → edit vars.stackSlabHeight in vars.js
 //   • Change entry position  → edit vars.stackCube1Position in vars.js
-//   • Change delay per cube  → edit cascadeDelay below
+//   • Change delay per cube  → edit cascadeDelay below (currently 0.7 — gives breathing room before 100% scroll)
 //   • Change entry ease      → edit the ease strings in fromTo calls below
 // ─────────────────────────────────────────────────────────────────────────────
 function gsapStackingCubes() {
 
-    // Seconds between each cube appearing — 1 means one cube arrives per scroll beat
-    const cascadeDelay = 1;
+    // Seconds between each cube appearing — 0.7 keeps all 6 cubes within the scroll range
+    // with a small breathing room before 100% scroll (6 cubes × 0.7 + 3 duration = 7.2 units)
+    const cascadeDelay = 0.7;
 
-    mainTimeline.addLabel("stacking-intro", "circle+=2");
+    mainTimeline.addLabel("stacking-intro", "circle+=4");
 
     // Hide circle cubes as the stacking phase begins
     circleCubes.forEach((cube) => {
         mainTimeline.to(cube, { visible: false, duration: 0.1 }, "stacking-intro");
     });
 
-    // Every stacking cube uses the same logic — index i drives the delay and Y position
     stackCubes.forEach((cube, i) => {
-        const delay  = i * cascadeDelay;                                   // cube i waits i seconds after stacking-intro
-        const finalY = vars.stackCube1Position.y - i * vars.stackSlabHeight; // cubes stack downward
+        const delay = i * cascadeDelay;
+        const finalY = vars.stackCube1Position.y - i * vars.stackSlabHeight;
 
-        // Reveal cube at its scheduled time
+        // Unmask just before the cube enters — it is already off-screen so no pop
         mainTimeline.to(cube, { visible: true, duration: 0.01 }, `stacking-intro+=${delay}`);
 
-        // Slide in from below to its final Y position
+        // Linear ease makes the rise feel driven by the scroll itself rather than
+        // a triggered animation — cube drifts up from 15 units below its landing spot
         mainTimeline.fromTo(cube.position,
-            { x: vars.stackCube1Position.x, y: finalY - 10, z: vars.stackCube1Position.z },
-            { x: vars.stackCube1Position.x, y: finalY,      z: vars.stackCube1Position.z, duration: 1.5, ease: "power3.out" },
+            { x: vars.stackCube1Position.x, y: finalY - 15, z: vars.stackCube1Position.z },
+            { x: vars.stackCube1Position.x, y: finalY,      z: vars.stackCube1Position.z, duration: 3, ease: "none" },
             `stacking-intro+=${delay}`
         );
-
-        // Scale in from zero to full size
-        mainTimeline.fromTo(cube.scale,
-            { x: 0, y: 0, z: 0 },
-            { x: vars.stackCubeScale, y: vars.stackCubeScale, z: vars.stackCubeScale, duration: 1.2, ease: "back.out(1.2)" },
-            `stacking-intro+=${delay}`
-        );
-
-        // Squish the cube above when this one lands (skip for the very first cube)
-        if (i > 0) {
-            mainTimeline.to(stackCubes[i - 1].scale, {
-                y: vars.stackCubeScale * 0.88,
-                duration: 0.15,
-                ease: "power2.in",
-                yoyo: true,
-                repeat: 1,
-            }, `stacking-intro+=${delay + 1.2}`);
-        }
     });
 }
 
