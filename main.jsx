@@ -520,17 +520,18 @@ async function initCircleCubes() {
 // ─── Scene 5c: Stacking Cubes (Setup) ────────────────────────────────────────
 //
 // GLB cubes loaded from vars.stackingCubes, all hidden at load (visible = false).
-// Each cube is placed at its FINAL stacked position (stackCube1Position - i*stackSlabHeight)
-// rather than at the funnel origin. This means the scroll reveal is driven entirely by
-// a fromTo position tween in gsapStackingCubes() — no spawning-from-origin visual artifact.
+// Each cube is placed at its TIGHT STACKED position (stackCube1Position - i*stackSlabHeight)
+// at load time. The GSAP fromTo in gsapStackingCubes() overrides position, so this is just
+// a sensible fallback — no spawning-from-origin visual artifact.
 // Initial rotation (x:5, z:5.5) gives them a tilted slab orientation at rest.
 //
 // ── To customise ─────────────────────────────────────────────────────────────
-//   • Add / remove cubes      → vars.stackingCubes array in vars.js
-//   • Stack vertical spacing  → vars.stackSlabHeight in vars.js
-//   • Stack anchor position   → vars.stackCube1Position in vars.js
-//   • Resting tilt            → cube.rotation.x and cube.rotation.z below
-//   • Scroll animation        → gsapStackingCubes() below
+//   • Add / remove cubes           → vars.stackingCubes array in vars.js
+//   • Connected stack spacing      → vars.stackSlabHeight in vars.js
+//   • Unconnected final spacing    → vars.stackFinalSpacing in vars.js
+//   • Stack anchor position        → vars.stackCube1Position in vars.js
+//   • Resting tilt                 → cube.rotation.x and cube.rotation.z below
+//   • Scroll animation             → gsapStackingCubes() below
 // ─────────────────────────────────────────────────────────────────────────────
 var stackCubes = []
 
@@ -539,9 +540,9 @@ async function initStackingCubes() {
         const stackCube = vars.stackingCubes[i];
         const cube = await createCube(stackCube.pathToCube);
 
-        // Place each cube at its final stacked position from the start so the
-        // scroll reveal is pure camera movement — no spawning from origin
-        const finalY = vars.stackCube1Position.y - i * vars.stackSlabHeight;
+        // Place each cube at its spread (unconnected) position — matches Phase 1 landing spot.
+        // The fromTo in gsapStackingCubes() overrides this anyway, but keeps it consistent.
+        const finalY = vars.stackCube1Position.y - i * vars.stackFinalSpacing;
         cube.position.set(vars.stackCube1Position.x, finalY, vars.stackCube1Position.z);
         cube.scale.set(vars.stackCubeScale, vars.stackCubeScale, vars.stackCubeScale);
 
@@ -751,14 +752,21 @@ function initGsap() {
 
 // ─── Stacking Phase ────────────────────────────────────────────────────────────
 //
-// All stacking cubes are driven by a single loop over the stackCubes array.
+// Two-phase animation:
+//   Phase 1 (stacking-intro)   — cubes rise one-by-one to their spread-out UNCONNECTED positions
+//   Phase 2 (stacking-connect) — all cubes animate together into the tight CONNECTED stack
+//
+// After Phase 2 finishes there is no further animation, so GSAP holds the connected state
+// for the rest of the scroll — scrolling back naturally reverses Phase 2 then Phase 1.
 //
 // ── To customise the stacking animation ──────────────────────────────────────
-//   • Add / remove cubes     → edit vars.stackingCubes in vars.js
-//   • Change cube spacing    → edit vars.stackSlabHeight in vars.js
-//   • Change entry position  → edit vars.stackCube1Position in vars.js
-//   • Change delay per cube  → edit cascadeDelay below (currently 0.7 — gives breathing room before 100% scroll)
-//   • Change entry ease      → edit the ease strings in fromTo calls below
+//   • Add / remove cubes           → edit vars.stackingCubes in vars.js
+//   • Unconnected entry spacing    → vars.stackFinalSpacing in vars.js  (gap when cubes first appear)
+//   • Connected stack spacing      → vars.stackSlabHeight in vars.js    (gap in the final connected pile)
+//   • Anchor (top cube position)   → vars.stackCube1Position in vars.js
+//   • Delay between cubes rising   → cascadeDelay below (0.7 s per cube)
+//   • Entry ease                   → ease string in Phase 1 fromTo below
+//   • Connect ease / duration      → ease / duration in Phase 2 fromTo below
 // ─────────────────────────────────────────────────────────────────────────────
 function gsapStackingCubes() {
 
@@ -773,21 +781,47 @@ function gsapStackingCubes() {
         mainTimeline.to(cube, { visible: false, duration: 0.1 }, "stacking-intro");
     });
 
+    // ── Phase 1: cubes rise one-by-one to their spread-out (unconnected) positions ──
     stackCubes.forEach((cube, i) => {
         const delay = i * cascadeDelay;
-        const finalY = vars.stackCube1Position.y - i * vars.stackSlabHeight;
+        // Wide unconnected Y — stackFinalSpacing controls the gap; increase to push cubes further apart
+        const spreadY = vars.stackCube1Position.y - i * vars.stackFinalSpacing;
 
         // Unmask just before the cube enters — it is already off-screen so no pop
         mainTimeline.to(cube, { visible: true, duration: 0.01 }, `stacking-intro+=${delay}`);
 
         // Linear ease makes the rise feel driven by the scroll itself rather than
-        // a triggered animation — cube drifts up from 15 units below its landing spot
+        // a triggered animation — cube drifts up from 15 units below its spread spot
         mainTimeline.fromTo(cube.position,
-            { x: vars.stackCube1Position.x, y: finalY - 15, z: vars.stackCube1Position.z },
-            { x: vars.stackCube1Position.x, y: finalY,      z: vars.stackCube1Position.z, duration: 3, ease: "none" },
+            { x: vars.stackCube1Position.x, y: spreadY - 15, z: vars.stackCube1Position.z },
+            { x: vars.stackCube1Position.x, y: spreadY,      z: vars.stackCube1Position.z, duration: 3, ease: "none" },
             `stacking-intro+=${delay}`
         );
     });
+
+    // ── Phase 2: all cubes animate into their tight connected (stacked) positions ──
+    // Label placed just after the last cube finishes rising
+    //   last cube delay = (n-1) × cascadeDelay, rise duration = 3 → total = (n-1)×0.7 + 3
+    const connectOffset = (stackCubes.length - 1) * cascadeDelay + 3;
+    mainTimeline.addLabel("stacking-connect", `stacking-intro+=${connectOffset}`);
+
+    stackCubes.forEach((cube, i) => {
+        const delay    = i * cascadeDelay;
+        // Wide spread Y (where Phase 1 left the cube)
+        const spreadY  = vars.stackCube1Position.y - i * vars.stackFinalSpacing;
+        // Tight stacked Y — stackSlabHeight keeps cubes close (connected look)
+        const stackedY = vars.stackCube1Position.y - i * vars.stackSlabHeight;
+
+        // Each cube connects one-by-one as the user scrolls, same cascade as Phase 1
+        mainTimeline.fromTo(cube.position,
+            { y: spreadY },
+            { y: stackedY, duration: 2, ease: "power2.in" },
+            `stacking-connect+=${delay}`
+        );
+    });
+
+    // No animation after stacking-connect — GSAP holds the connected state for the
+    // remainder of the scroll. Scrolling back naturally reverses both phases.
 }
 
 
