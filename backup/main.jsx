@@ -352,7 +352,6 @@ function initFunnelTunnel() {
 async function initCubes() {
     await initInitialCubes();
     await initCircleCubes();
-    await initStackingCubes();
 }
 
 // Emissive values applied to all cube mesh children so they exceed the bloom threshold
@@ -411,51 +410,6 @@ async function initCircleCubes() {
     }
 
 }
-
-// The 2 stacking cubes — hidden at load, revealed during the stacking scroll phase
-var stackCubes = []
-var stackCube1IdleFloat = null;
-var stackConnected = false;
-var stackSlabHeight = 2; // world-Y extent of one slab, overwritten at load
-
-async function initStackingCubes() {
-    for (let i = 0; i < vars.stackingCubes.length; i++) {
-        const stackCube = vars.stackingCubes[i];
-        const cube = await createCube(stackCube.pathToCube);
-        cube.position.copy(new THREE.Vector3(...vars.funnelToPositionArr));
-        setupCubeMesh(cube, stackCube.name);
-        cube.rotation.x = 5;
-        cube.rotation.y = 0;
-        cube.visible = false;
-        if (i === 0) {
-            // Get LOCAL bounding box (before rotation) to find true slab thickness
-            const savedRx = cube.rotation.x;
-            cube.rotation.set(0, 0, 0);
-            cube.updateWorldMatrix(true, true);
-            const localBox = new THREE.Box3().setFromObject(cube);
-            cube.rotation.set(savedRx, 0, 0);
-            cube.updateWorldMatrix(true, true);
-
-            const localSize = new THREE.Vector3();
-            localBox.getSize(localSize);
-            // local +Z projects onto world Y via -sin(rx)
-            stackSlabHeight = localSize.z * Math.abs(Math.sin(savedRx));
-        }
-        stackCubes.push(cube);
-    }
-}
-
-function createStackCube1IdleFloat(cube) {
-    stackCube1IdleFloat = gsap.to(cube.position, {
-        y: vars.stackCube1Position.y + vars.stackIdleFloatAmplitude,
-        duration: vars.stackIdleFloatDuration,
-        yoyo: true,
-        repeat: -1,
-        ease: "sine.inOut",
-    });
-    stackCube1IdleFloat.pause();
-}
-
 
 // Promise-based GLB loader — adds the loaded model to scene and resolves with it
 // Must be awaited so initGsap() can animate the returned object immediately after
@@ -630,108 +584,6 @@ function initGsap() {
         });
 
     });
-
-    gsapStackingCubes();
-}
-
-
-// ─── Stacking Phase ────────────────────────────────────────────────────────────
-
-// "stacking-intro"    — cube 1 flies to center and idles with a float animation
-// "stacking-connect"  — cubes 2–6 rise from below sequentially and lock on
-// Scroll-up reversal is fully automatic via GSAP scrub
-function gsapStackingCubes() {
-    const cube1 = stackCubes[0];
-
-    createStackCube1IdleFloat(cube1);
-
-    mainTimeline.addLabel("stacking-intro", "circle+=2");
-    mainTimeline.addLabel("stacking-connect", "stacking-intro+=2");
-
-    // ── Hide circle cubes as stacking phase begins ────────────────────────────
-    circleCubes.forEach((cube) => {
-        mainTimeline.to(cube, { visible: false, duration: 0.1 }, "stacking-intro");
-    });
-
-    // ── Cube 1: fly to center and scale in ───────────────────────────────────
-    mainTimeline.to(cube1, { visible: true, duration: 0.01 }, "stacking-intro");
-
-    mainTimeline.fromTo(cube1.position,
-        { x: vars.funnelToPosition.x, y: vars.funnelToPosition.y, z: vars.funnelToPosition.z },
-        { x: vars.stackCube1Position.x, y: vars.stackCube1Position.y, z: vars.stackCube1Position.z, duration: 1, ease: "power2.out" },
-        "stacking-intro"
-    );
-
-    mainTimeline.fromTo(cube1.scale,
-        { x: vars.funnelToScale, y: vars.funnelToScale, z: vars.funnelToScale },
-        { x: vars.stackCubeScale, y: vars.stackCubeScale, z: vars.stackCubeScale, duration: 1, ease: "back.out(1.5)" },
-        "stacking-intro"
-    );
-
-    mainTimeline.from(cube1.rotation, { x: 4, y: 6, z: 4, duration: 1 }, "stacking-intro");
-
-    // Start idle float once cube 1 is fully in place
-    let introSentinel = { v: 0 };
-    mainTimeline.to(introSentinel, {
-        v: 1,
-        duration: 0.01,
-        onComplete: () => { stackCube1IdleFloat.restart(); },
-        onReverseComplete: () => { stackCube1IdleFloat.pause(); },
-    }, "stacking-intro+=1.05");
-
-    // ── Cubes 2–6: rise from below and connect sequentially ──────────────────
-
-    // Pause idle float when the first connect starts
-    let pauseFloatSentinel = { v: 0 };
-    mainTimeline.to(pauseFloatSentinel, {
-        v: 1,
-        duration: 0.01,
-        onComplete: () => { stackCube1IdleFloat.pause(); },
-        onReverseComplete: () => { stackCube1IdleFloat.restart(); },
-    }, "stacking-connect");
-
-    // Cubes 2–6 cascade: each starts 0.3s after the previous, creating a rapid stacking effect.
-    // This keeps the total timeline extension minimal (~2s added) so earlier scenes are unaffected.
-    const cascadeStep = 0.3;
-    for (let i = 1; i < stackCubes.length; i++) {
-        const cube = stackCubes[i];
-        const prevCube = stackCubes[i - 1];
-        const delay = (i - 1) * cascadeStep;
-        const finalY = vars.stackCube1Position.y - i * stackSlabHeight;
-
-        mainTimeline.to(cube, { visible: true, duration: 0.01 }, `stacking-connect+=${delay}`);
-
-        mainTimeline.fromTo(cube.position,
-            { x: vars.stackCube1Position.x, y: finalY - 10, z: vars.stackCube1Position.z },
-            { x: vars.stackCube1Position.x, y: finalY, z: vars.stackCube1Position.z, duration: 1.5, ease: "power3.out" },
-            `stacking-connect+=${delay}`
-        );
-
-        mainTimeline.fromTo(cube.scale,
-            { x: 0, y: 0, z: 0 },
-            { x: vars.stackCubeScale, y: vars.stackCubeScale, z: vars.stackCubeScale, duration: 1.2, ease: "back.out(1.2)" },
-            `stacking-connect+=${delay}`
-        );
-
-        // Squish the cube directly above on landing
-        mainTimeline.to(prevCube.scale, {
-            y: vars.stackCubeScale * 0.88,
-            duration: 0.15,
-            ease: "power2.in",
-            yoyo: true,
-            repeat: 1,
-        }, `stacking-connect+=${delay + 1.2}`);
-    }
-
-    // Fire stackConnected after the last cube lands: last start + 1.5s animation
-    const lastDelay = (stackCubes.length - 2) * cascadeStep + 1.5;
-    let connectSentinel = { v: 0 };
-    mainTimeline.to(connectSentinel, {
-        v: 1,
-        duration: 0.01,
-        onComplete: () => { stackConnected = true; },
-        onReverseComplete: () => { stackConnected = false; },
-    }, `stacking-connect+=${lastDelay}`);
 }
 
 
@@ -779,7 +631,6 @@ function animate () {
     requestAnimationFrame(animate)
 
     mouseLook();
-
 
     updateUtime();
 

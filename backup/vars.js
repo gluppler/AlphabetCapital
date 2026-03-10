@@ -54,19 +54,3 @@ export const circleCubes = [
 export const circleRadius = 8;
 export const circleScale = 1;
 export const onCircleHoverScale = 1.3;
-
-
-// Stacking Cubes //
-export const stackingCubes = [
-    new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/4PL Innovation Partner.glb', "stack-cube-1"),
-    new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/AI & Cloud Synergy.glb', "stack-cube-2"),
-    new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/Deployment.glb', "stack-cube-3"),
-    new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/Execution Speed (4PL).glb', "stack-cube-4"),
-    new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/Financial Agility.glb', "stack-cube-5"),
-    new Cube(new THREE.Vector3(...funnelToPositionArr), '/img/Intelligence-First Design.glb', "stack-cube-6"),
-]
-
-export const stackCube1Position = { x: 0, y: -10, z: 0 };
-export const stackCubeScale = 1;
-export const stackIdleFloatAmplitude = 0.15;
-export const stackIdleFloatDuration = 2.5;
