@@ -67,5 +67,5 @@ export const stackingCubes = [
 ]
 
 export const stackCube1Position = { x: 0, y: -8, z: 0 }; // landing position of the first (top) stacking cube; remaining cubes stack downward from here
-export const stackCubeScale = 1;
-export const stackSlabHeight = 0.7; // vertical gap between stacked cubes — increase to spread apart, decrease to bring closer
+export const stackCubeScale = 1.5;
+export const stackSlabHeight = 0.9; // vertical gap between stacked cubes — increase to spread apart, decrease to bring closer
